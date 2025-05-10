@@ -20,7 +20,54 @@ That's exactly the situation we had. My team and I are pretty obsessed with code
 
 **Before: Passing Everything Through Navigation Params**
 
-<!-- CODE SNIPPET: before (component with lots of params and business logic) -->
+```ts
+// SomeDocumentScreen.jsx
+export const SomeDocumentScreen = ({ route }) => {
+  // Numerous navigation functions with business logic
+  const navigateToFirstStep = () => {
+    navigate("FirstStepScreen", {
+      ...route.params, // Passing ALL params
+      type: "typeA",
+    });
+  };
+
+  const navigateToSecondStep = (firstStepData) => {
+    navigate("SecondStepScreen", {
+      ...route.params, // Passing ALL params again
+      type: "typeB",
+      firstStepData,
+    });
+  };
+
+  // Complex business logic in component
+  const handleNextStep = () => {
+    const { firstStepData, secondStepData } = route.params;
+    if (firstStepData) {
+      if (secondStepData) {
+        navigateToFinalStep(firstStepData, secondStepData);
+      } else {
+        navigateToMiddleStep(firstStepData);
+      }
+    }
+  };
+
+  const handleRetry = () => {
+    const { type, firstStepData } = route.params;
+    if (type === "typeB") {
+      navigateToSecondStep(firstStepData);
+    } else {
+      navigateToFirstStep();
+    }
+  };
+
+  return (
+    <Container>
+      <Title>{t("ScreenTitle")}</Title>
+      <Content source={{ uri: route.params.dataPath }} />
+    </Container>
+  );
+};
+```
 
 Some screens didn't need more than half of the params, but were forced to accept them because the next screen needed them, which is a direct violation of the interface segregation principle. It became almost impossible to track which screen actually needed which params. We could have continued treating it as nine separate screens, maybe refactored here and there, or moved some data from params to a state manager. That would have been a slight improvement, but still not what I wanted.
 
