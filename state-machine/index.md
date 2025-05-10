@@ -102,7 +102,36 @@ export const stateToScreen: Record<ProcessState, ScreenNames> = {
 
 I also wrote navigation helpers to handle the different navigation actions. Since React Navigation v7 requires the navigation object to come from a hook and only be used inside component bodies, I passed it to the state machine transition functions as a dependency.
 
-<!-- CODE SNIPPET: navigation helpers and dependency injection -->
+```ts
+// Helper functions to handle different navigation actions
+export const navigateToState = (
+  state: ProcessState,
+  navigate: NavigateFunction,
+  params?: Record<string, any>
+) => {
+  const screenName = stateToScreen[state];
+  navigate(screenName, params);
+};
+
+export const resetToState = (
+  state: ProcessState, 
+  reset: ResetFunction
+) => {
+  const screenName = stateToScreen[state];
+  reset({
+    index: 0,
+    routes: [{ name: screenName }],
+  });
+};
+
+export const pushToState = (
+  state: ProcessState,
+  dispatch: DispatchFunction
+) => {
+  const screenName = stateToScreen[state];
+  dispatch(StackActions.push(screenName));
+};
+```
 
 Once this preparation was done, I began gradually moving the business logic from each screen into the respective state in my state machine, step by step. This process took at least two weeks, including testing each step to make sure nothing broke. I also made a point not to change the logic itself, since it was already working well—there was no need to make the task even more complicated. I focused solely on changing the structure, making the transition as safe and minimal as possible.
 
