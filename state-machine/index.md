@@ -84,7 +84,6 @@ I started by creating the structure of the state machine, declaring all the step
 ```ts
 // ProcessSteps.ts
 export const processSteps = {
-  PREPARE: "Prepare",
   FIRST_STEP: "FirstStep",
   SECOND_STEP: "SecondStep",
   // Additional steps...
@@ -94,7 +93,6 @@ export const processSteps = {
 export type ProcessState = (typeof processSteps)[keyof typeof processSteps];
 
 export const stateToScreen: Record<ProcessState, ScreenNames> = {
-  [processSteps.PREPARE]: "PrepareScreen",
   [processSteps.FIRST_STEP]: "FirstStepScreen",
   [processSteps.SECOND_STEP]: "SecondStepScreen",
   // Mapping additional steps to screens...
