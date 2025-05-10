@@ -23,41 +23,31 @@ That's exactly the situation we had. My team and I are pretty obsessed with code
 ```ts
 // SomeDocumentScreen.jsx
 export const SomeDocumentScreen = ({ route }) => {
-  // Numerous navigation functions with business logic
-  const navigateToFirstStep = () => {
-    navigate("FirstStepScreen", {
-      ...route.params, // Passing ALL params
-      type: "typeA",
-    });
-  };
+  const { navigate } = useNavigation();
 
-  const navigateToSecondStep = (firstStepData) => {
-    navigate("SecondStepScreen", {
-      ...route.params, // Passing ALL params again
-      type: "typeB",
-      firstStepData,
-    });
-  };
+  // Complex business logic directly in component
+  // Passing all params through, for the next screens
+  const handleNextStep = (path) => {
+    const { firstStepData } = route.params;
 
-  // Complex business logic in component
-  const handleNextStep = () => {
-    const { firstStepData, secondStepData } = route.params;
     if (firstStepData) {
-      if (secondStepData) {
-        navigateToFinalStep(firstStepData, secondStepData);
-      } else {
-        navigateToMiddleStep(firstStepData);
-      }
+      navigate("SecondStepScreen", {
+        ...route.params,
+        type: "typeB",
+        firstStepData: { ...firstStepData, path }
+      });
     }
   };
 
-  const handleRetry = () => {
+  const handleRetry = (error) => {
     const { type, firstStepData } = route.params;
-    if (type === "typeB") {
-      navigateToSecondStep(firstStepData);
-    } else {
-      navigateToFirstStep();
-    }
+    const retryInfo = determineRetryPath(error);
+
+    navigate("RetryStepScreen", {
+      ...route.params,
+      failed: retryInfo.failed,
+      maxAllowedRetries: 0
+    });
   };
 
   return (
