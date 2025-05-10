@@ -79,9 +79,28 @@ I started planning how to improve this feature, but the complexity made it hard 
 
 ## The Refactoring: Step by Step
 
-I started by creating the structure of the state machine, declaring all the steps, and preparing a mapper function to connect each state to its corresponding screen.
+I started by creating the structure of the state machine, declaring all the steps, and preparing an object to connect each state to its corresponding screen.
 
-<!-- CODE SNIPPET: FSM structure and step-to-screen mappers -->
+```ts
+// ProcessSteps.ts
+export const processSteps = {
+  PREPARE: "Prepare",
+  FIRST_STEP: "FirstStep",
+  SECOND_STEP: "SecondStep",
+  // Additional steps...
+  RETRY_STEP: "RetryStep",
+} as const;
+
+export type ProcessState = (typeof processSteps)[keyof typeof processSteps];
+
+export const stateToScreen: Record<ProcessState, ScreenNames> = {
+  [processSteps.PREPARE]: "PrepareScreen",
+  [processSteps.FIRST_STEP]: "FirstStepScreen",
+  [processSteps.SECOND_STEP]: "SecondStepScreen",
+  // Mapping additional steps to screens...
+  [processSteps.RETRY_STEP]: "RetryStepScreen",
+};
+```
 
 I also wrote navigation helpers to handle the different navigation actions. Since React Navigation v7 requires the navigation object to come from a hook and only be used inside component bodies, I passed it to the state machine transition functions as a dependency.
 
