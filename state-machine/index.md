@@ -61,10 +61,7 @@ export const SomeDocumentScreen = ({ route }) => {
   };
 
   return (
-    <Container>
-      <Title>{t("ScreenTitle")}</Title>
-      <Content source={{ uri: route.params.dataPath }} />
-    </Container>
+    // Components UI...
   );
 };
 ```
@@ -200,7 +197,27 @@ export const createProcessStore: StateCreator<ProcessStore> = (set, get) => ({
 
 The screens themselves became much more "dumb"—they no longer handle any business logic, but simply use the functions provided by the state machine.
 
-<!-- CODE SNIPPET: a screen after refactor, showing how simple it is -->
+```ts
+// SomeDocumentScreen.tsx
+export const SomeDocumentScreen = () => {
+  const { navigate, dispatch } = useNavigation();
+
+  const { navigateToSecondStep, handleRetry } = useProcessStore();
+
+  const handleNextStep = (path: string) => {
+    navigateToSecondStep(dispatch, path);
+  };
+
+  const handleError = (error: Error) => {
+    const retryInfo = determineRetryPath(error);
+    handleRetry(navigate, retryInfo.failed);
+  };
+
+  return (
+      // Components UI...
+  );
+};
+```
 
 As a pleasant side effect, I was able to delete many lines of redundant code that were, in fact, not in use—but it wasn't obvious before, and everyone was afraid to remove it for fear of breaking something. I shudder to think what it would have been like if we had needed to add new features or extend this code in its previous form—it would have been a nightmare. Now, the codebase is much better structured, clearer, far more maintainable, and easy to extend with new features in the future. And I haven't even mentioned debugging: finding a bug in the old mess would have been terrifying, but now it's so much easier.
 
