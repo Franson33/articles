@@ -151,7 +151,8 @@ export const createProcessStore: StateCreator<ProcessStore> = (set, get) => ({
   clear: () => set(() => initialState),
 
   // State transitions
-  navigateToFirstStep: ({ navigate, createProcess, dataId }) => {
+  // Business logic that previously lived in the components body
+  navigateToFirstStep: (navigate) => {
     // Logic to transition to the first step
     set((state) => ({
       ...state,
@@ -178,7 +179,6 @@ export const createProcessStore: StateCreator<ProcessStore> = (set, get) => ({
   },
 
   // Additional state transitions for each step in the process
-  // That previously lived in the screens component body
   // ...
 
   // Error handling state transitions
