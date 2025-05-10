@@ -18,7 +18,7 @@ That's exactly the situation we had. My team and I are pretty obsessed with code
 
 ---
 
-**Before: Passing Everything Through Navigation Params**
+## Before: Passing Everything Through Navigation Params
 
 ```ts
 // SomeDocumentScreen.jsx
@@ -209,7 +209,29 @@ export const SomeDocumentScreen = () => {
 };
 ```
 
-As a pleasant side effect, I was able to delete many lines of redundant code that were, in fact, not in use—but it wasn't obvious before, and everyone was afraid to remove it for fear of breaking something. I shudder to think what it would have been like if we had needed to add new features or extend this code in its previous form—it would have been a nightmare. Now, the codebase is much better structured, clearer, far more maintainable, and easy to extend with new features in the future. And I haven't even mentioned debugging: finding a bug in the old mess would have been terrifying, but now it's so much easier.
+As a pleasant side effect, I was able to delete many lines of redundant code that were, in fact, not in use—but it wasn't obvious before, and everyone was afraid to remove it for fear of breaking something. I shudder to think what it would have been like if we had needed to add new features or extend this code in its previous form—it would have been a nightmare. Now, the code is much better structured, clearer, far more maintainable, and easy to extend with new features in the future.
+
+---
+
+## Key Takeaways
+
+- **Recognize the Pattern**: Taking a step back to see the bigger picture revealed that our nine separate screens were actually a single process with distinct states - a perfect match for the finite-state machine pattern.
+
+- **Centralized Logic**: Moving business logic from individual components into a dedicated state machine significantly improved code organization and maintainability.
+
+- **Cleaner Components**: UI components became simpler "dumb" presentational components, focused solely on rendering and user interaction rather than complex business logic.
+
+- **Self-Documenting Code**: The state machine structure made the flow so clear that it serves as documentation - you can understand the entire process just by reviewing the state transitions.
+
+- **Easier Debugging**: Finding and fixing bugs became much simpler with a centralized, structured approach to state management.
+
+- **Reduced Code**: As a bonus, we were able to safely remove redundant code that was previously difficult to identify as unused.
+
+- **Future-Proofing**: Adding new features or states to the process is now straightforward since the pattern scales well with additional complexity.
+
+- **Theoretical Knowledge Has Practical Value**: This real-world example demonstrates why understanding design patterns like finite-state machines remains valuable in modern software development.
+
+The time investment in refactoring (approximately two weeks) has already paid dividends in terms of code quality and maintenance efficiency. What initially seemed like a daunting task - refactoring nine complex screens - became manageable by applying the right pattern to the problem.
 
 ---
 
