@@ -113,10 +113,7 @@ export const navigateToState = (
   navigate(screenName, params);
 };
 
-export const resetToState = (
-  state: ProcessState, 
-  reset: ResetFunction
-) => {
+export const resetToState = (state: ProcessState, reset: ResetFunction) => {
   const screenName = stateToScreen[state];
   reset({
     index: 0,
@@ -141,7 +138,65 @@ Once this preparation was done, I began gradually moving the business logic from
 
 I was very satisfied with the result. Now, the business logic is encapsulated in one place, and it's easy to understand the whole flow just by looking at the code for each step. In fact, it's so clear and self-documenting that you barely need the flowchart anymore.
 
-<!-- CODE SNIPPET: state machine structure after refactor -->
+```ts
+// ProcessStore.ts
+export const createProcessStore: StateCreator<ProcessStore> = (set, get) => ({
+  // Initial state
+  currentState: processSteps.PREPARE,
+  type: undefined,
+  firstStepData: { path: undefined, success: false, id: undefined },
+  secondStepData: { path: undefined, success: false, id: undefined },
+
+  // Utility methods
+  clear: () => set(() => initialState),
+
+  // State transitions
+  navigateToFirstStep: ({ navigate, createProcess, dataId }) => {
+    // Logic to transition to the first step
+    set((state) => ({
+      ...state,
+      currentState: processSteps.FIRST_STEP,
+      type: "typeA",
+      // Update state related to the transition
+    }));
+
+    navigateToState(processSteps.FIRST_STEP, navigate);
+  },
+
+  navigateToSecondStep: (dispatch, path) => {
+    // Logic to transition to second step state
+    set((state) => {
+      const dataKey = getDataKey(state.type);
+      return {
+        ...state,
+        currentState: processSteps.SECOND_STEP,
+        [dataKey]: { ...state[dataKey], path },
+      };
+    });
+
+    popToState(processSteps.SECOND_STEP, dispatch);
+  },
+
+  // Additional state transitions for each step in the process
+  // That previously lived in the screens component body
+  // ...
+
+  // Error handling state transitions
+  handleRetry: (navigate, failed) => {
+    // Logic to handle retry logic
+    set((state) => ({
+      ...state,
+      currentState: processSteps.RETRY_STEP,
+      tasksInProgress: { completed: [], remaining: failed },
+      maxAllowedRetries: 0,
+    }));
+
+    navigateToState(processSteps.RETRY_STEP, navigate, {
+      // Params to pass ...
+    });
+  },
+});
+```
 
 The screens themselves became much more "dumb"—they no longer handle any business logic, but simply use the functions provided by the state machine.
 
