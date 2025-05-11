@@ -119,6 +119,8 @@ export const pushToState = (
 
 Once this preparation was done, I began gradually moving the business logic from each screen into the respective state in my state machine, step by step. This process took at least two weeks, including testing each step to make sure nothing broke. I also made a point not to change the logic itself, since it was already working well—there was no need to make the task even more complicated. I focused solely on changing the structure, making the transition as safe and minimal as possible.
 
+To manage the state of our finite-state machine and house its transition logic, I leveraged our existing client-state management solution, Zustand. The createProcessStore function, shown below, defines this logic. It's worth noting that the FSM pattern itself is flexible; you could implement it with vanilla React hooks, Context API, or other state management libraries. For applications with numerous or highly complex state machines, dedicated libraries like [XState](https://xstate.js.org/) are also excellent choices, offering powerful features such as formal definitions, visualizers, and actor model capabilities.
+
 ---
 
 ## The Result
@@ -162,7 +164,7 @@ export const createProcessStore: StateCreator<ProcessStore> = (set, get) => ({
       };
     });
 
-    popToState(processSteps.SECOND_STEP, dispatch);
+    pushToState(processSteps.SECOND_STEP, dispatch);
   },
 
   // Additional state transitions for each step in the process
@@ -208,6 +210,8 @@ export const SomeDocumentScreen = () => {
   );
 };
 ```
+
+While some FSMs use a generic transition function, like proceedToStep(targetState, ...params), I chose specific methods for each state transition (e.g., navigateToSecondStep). This was my conscious decision to maintain clarity ,type safety and simplicity, as each transition in our process had distinct parameter requirements, making a single generic dispatcher less practical for this use case.
 
 As a pleasant side effect, I was able to delete many lines of redundant code that were, in fact, not in use—but it wasn't obvious before, and everyone was afraid to remove it for fear of breaking something. I shudder to think what it would have been like if we had needed to add new features or extend this code in its previous form—it would have been a nightmare. Now, the code is much better structured, clearer, far more maintainable, and easy to extend with new features in the future.
 
