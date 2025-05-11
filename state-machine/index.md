@@ -21,7 +21,7 @@ That's exactly the situation we had. My team and I are pretty obsessed with code
 ## Before: Passing Everything Through Navigation Params
 
 ```ts
-// SomeDocumentScreen.jsx
+// SomeDocumentScreen.tsx
 export const SomeDocumentScreen = ({ route }) => {
   const { navigate } = useNavigation();
 
@@ -131,7 +131,7 @@ I was very satisfied with the result. Now, the business logic is encapsulated in
 // ProcessStore.ts
 export const createProcessStore: StateCreator<ProcessStore> = (set, get) => ({
   // Initial state
-  currentState: processSteps.PREPARE,
+  currentState: undefined,
   type: undefined,
   firstStepData: { path: undefined, success: false, id: undefined },
   secondStepData: { path: undefined, success: false, id: undefined },
