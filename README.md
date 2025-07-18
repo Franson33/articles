@@ -4,7 +4,8 @@ My personal experience and thoughts on tech topics. This repository contains art
 
 ## Featured Articles
 
-- [I love finite-state machines](articles/tech/finite-state-machines.md) - My thoughts on the  state machines and their applications (Draft)
+- [I love finite-state machines](articles/state-machine) - My thoughts on the state machines and their applications
+- [React's Component Revolution: How Closures Became the Foundation of Modern UI Components](articles/closure-based-architecture) - Exploring how React's hooks transformed component architecture through JavaScript's closure mechanics
 
 ## About
 

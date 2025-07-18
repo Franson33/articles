@@ -1,7 +1,7 @@
 ---
 title: "I love finite-state machines"
 date: 2025-05-10
-tags: [patterns, state-machine, refactoring]
+tags: [patterns, state-machine,-refactoring]
 category: tech
 draft: true
 ---
@@ -44,13 +44,13 @@ export const SomeDocumentScreen = ({ route }) => {
     const retryInfo = determineRetryPath(error);
 
     navigate("RetryStepScreen", {
-      ...route.params,
-      failed: retryInfo.failed,
-      maxAllowedRetries: 0
-    });
-  };
+            ...route.params,
+            failed: retryInfo.failed,
+            maxAllowedRetries: 0
+        });
+    };
 
-  return (
+    return (
     // Components UI...
   );
 };
