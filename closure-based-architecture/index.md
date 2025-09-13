@@ -16,7 +16,7 @@ When you write:
 const [count, setCount] = useState(0);
 ```
 
-you're not just managing state—you're creating a closure that captures variables from its lexical scope. When React introduced hooks in 2018, it didn't just give us a new API. It signifiZcantly shifted the framework's **component architecture** from class-based to closure-based patterns.
+you're not just managing state—you're creating a closure that captures variables from its lexical scope. When React first introduced hooks in late 2018 (and released them in early 2019), it didn’t just give us a new API. It significantly shifted the framework's **component architecture** from class-based to closure-centric patterns.
 
 ## A Note on Terminology
 
@@ -64,7 +64,7 @@ Cleaner, right? But what's really happening here represents a fundamental shift 
 
 To be clear: React's core engine—the reconciler, scheduler, and rendering pipeline—remains largely unchanged. What transformed was how we **write and think about components**. The closure-based architecture refers specifically to how functional components leverage JavaScript's closure mechanics for state management, effects, and event handling.
 
-React still uses the same virtual DOM diffing, fiber architecture, and scheduling algorithms. But the component layer now operates fundamentally differently.
+React still uses the same virtual DOM diffing, fiber architecture, and scheduling algorithms. Closures have always existed in React — inline event handlers, higher-order components, and render props all used them. But with hooks, closures became the **primary mechanism** for state, effect, and event management inside components. Component state doesn’t live _inside_ closures. React stores it in its internal fiber structures. Each render just creates a closure that gives you access to the current snapshot of that state.
 
 ## Welcome to the Closure Factory
 
@@ -121,7 +121,7 @@ function Timer() {
 }
 ```
 
-This code has a bug—the classic "stale closure" trap. The setInterval callback captures count from when the effect first ran. Even though count changes in React's internal state, the closure still sees the old value because the effect (and its closure) never re-runs.
+This code has a bug—the classic "stale closure" trap, which can also happen with event listeners, async callbacks, or observers that capture old variables. The setInterval callback captures count from when the effect first ran. Even though count changes in React's internal state, the closure still sees the old value because the effect (and its closure) never re-runs.
 
 The fix? Either include count in dependencies (creating new closures) or use an updater function:
 
@@ -137,7 +137,7 @@ useEffect(() => {
 
 ## The Memory Management Dance
 
-React's closure-heavy architecture creates interesting memory challenges. When components unmount, proper cleanup is essential to prevent memory leaks:
+React's closure-heavy architecture creates interesting memory challenges. When components unmount, proper cleanup is essential to prevent memory leaks. In JavaScript, closures themselves don’t block garbage collection. They are collected like any object — **unless** something else is still holding a reference to them. Leaks happen when external systems (timers, subscriptions, event listeners) keep pointing at a closure that belongs to an old render.
 
 ```javascript
 function DataSubscription({ userId }) {
@@ -145,20 +145,22 @@ function DataSubscription({ userId }) {
 
   useEffect(() => {
     const subscription = api.subscribe(userId, (newData) => {
-      setData(newData); // Closure holds reference to setData
+      setData(newData); // Closure references setData for this render
     });
 
-    // Without cleanup, subscription keeps closure alive
-    // Closure keeps setData alive
-    // This creates a reference chain that prevents garbage collection
+    // Cleanup removes the reference from the external system
     return () => subscription.unsubscribe();
   }, [userId]);
 }
 ```
 
-The cleanup process is crucial for proper memory management. When a component unmounts, React calls all cleanup functions, allowing each closure to break its external references (timers, subscriptions, event listeners). React then discards its own references to these cleanup functions. Only after all these references are broken can the JavaScript engine's garbage collector effectively remove the entire closure chain from memory.
+Without the cleanup:
 
-This is why cleanup functions are so critical—they're the key to breaking the reference chains that would otherwise keep closures alive indefinitely.
+1. The subscription object keeps a reference to the callback closure.
+2. That closure references `setData`, tied to this component instance’s fiber.
+3. As long as the subscription lives, the closure (and component) stay in memory, even if the component unmounted.
+
+Cleanup functions break this chain. When React unmounts a component, it calls all effect cleanups, removing external references. Once nothing points at the closure anymore, the garbage collector can reclaim it.
 
 ## Memoization: Optimizing the Closure Assembly Line
 
@@ -189,7 +191,7 @@ function ExpensiveComponent({ items, onSelect }) {
 }
 ```
 
-Memoization is React's way of saying: "Don't create new closures unless you have to." However, remember that memoization is not guaranteed—React may choose to re-run a memoized callback, especially in development mode or strict mode.
+Memoization is React's way of saying: "Don't create new closures unless you have to." In production, memoized values persist until dependencies change. In development and Strict Mode, React may intentionally call your component twice and recreate memoized values to help detect unintended side effects.
 
 ## The Ripple Effect
 
@@ -204,7 +206,7 @@ Understanding React's closure-based **component architecture** changes how you t
 - **Components aren't objects**—they're closure factories
 - **Component state is accessed through closures**—but stored in React's internal fiber structures
 - **Re-renders create new closures**—with fresh captures of current state
-- **Component performance**—is about managing closure lifecycles efficiently
+- **Component performance**—is about managing closure lifecycle efficiently
 
 Once you see React through the closure lens, everything clicks. Dependency arrays make sense. Stale closure bugs become predictable. Memoization strategies become obvious.
 
