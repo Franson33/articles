@@ -6,6 +6,8 @@ category: tech
 draft: true
 ---
 
+> _Note: In this article I intentionally use the jargon terms **"closure"** and **"variable."** The ECMAScript specification doesn’t formally define “closures”—it talks about **lexical environments** and **scope chains**—and what we usually call “variables” are technically **identifiers bound in environment records**. I’m sticking with the jargon here because it’s what the community uses and it makes the discussion more readable._
+
 # React's Component Revolution: How Closures Became the Foundation of Modern UI Components
 
 Every React developer has written hundreds of closures. Many don't realize how central they've become.
@@ -17,10 +19,6 @@ const [count, setCount] = useState(0);
 ```
 
 you're not just managing state—you're creating a closure that captures variables from its lexical scope. When React first introduced hooks in late 2018 (and released them in early 2019), it didn’t just give us a new API. It significantly shifted the framework's **component architecture** from class-based to closure-centric patterns.
-
-## A Note on Terminology
-
-_Throughout this article, I use the term "closure"—a concept not formally defined in the ECMAScript specification. What I call "closures" are actually the result of JavaScript's lexical scoping mechanism, implemented through lexical environments and scope chains. Similarly, I use "variables" in the colloquial sense, though the spec more precisely refers to "identifiers" that reference bindings in environment records. The author intentionally uses these common jargon terms for better understanding by the general public._
 
 ## The Great Migration: From Classes to Closures
 
@@ -137,7 +135,7 @@ useEffect(() => {
 
 ## The Memory Management Dance
 
-React's closure-heavy architecture creates interesting memory challenges. When components unmount, proper cleanup is essential to prevent memory leaks. In JavaScript, closures themselves don’t block garbage collection. They are collected like any object — **unless** something else is still holding a reference to them. Leaks happen when external systems (timers, subscriptions, event listeners) keep pointing at a closure that belongs to an old render.
+React's closure-heavy architecture creates unique memory challenges. When components unmount, proper cleanup is essential to prevent leaks. Closures don’t block garbage collection on their own — they’re collected like any object — **unless** something else still holds a reference to them. Problems arise when external systems (timers, subscriptions, event listeners) keep pointing at closures from old renders.
 
 ```javascript
 function DataSubscription({ userId }) {
@@ -161,6 +159,10 @@ Without the cleanup:
 3. As long as the subscription lives, the closure (and component) stay in memory, even if the component unmounted.
 
 Cleanup functions break this chain. When React unmounts a component, it calls all effect cleanups, removing external references. Once nothing points at the closure anymore, the garbage collector can reclaim it.
+
+### Why this matters
+
+Most memory leaks in React apps don’t come from React itself—they come from effects that forget to clean up. Leaks might not be obvious in small components, but at scale (think live dashboards, chat apps, or data-heavy UIs) they add up, slowing the browser and draining memory. Knowing that closures live on as long as _anything_ references them makes it clear why cleanup functions are non-negotiable.
 
 ## Memoization: Optimizing the Closure Assembly Line
 
