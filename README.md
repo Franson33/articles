@@ -1,14 +1,14 @@
-# Tech Articles & Insights
+# tech articles & insights
 
-My personal experience and thoughts on tech topics. This repository contains articles, tutorials, and reflections on software development, design patterns, and technical practices.
+my personal experience and thoughts on tech topics. this repository contains articles, tutorials, and reflections on software development, design patterns, and technical practices.
 
-## Featured Articles
+## featured articles
 
-- [I love finite-state machines](articles/i-love-state-machines) - My thoughts on the state machines and their applications
-- [React's Component Revolution: How Closures Became the Foundation of Modern UI Components](articles/closure-based-architecture) - Exploring how React's hooks transformed component architecture through JavaScript's closure mechanics
+- [i love finite-state machines](articles/i-love-state-machines.md) - my thoughts on the state machines and their applications
+- [react's component revolution: how closures became the foundation of modern ui components](articles/closure-based-architecture.md) - exploring how react's hooks transformed component architecture through javascript's closure mechanics
 
-## About
+## about
 
-This blog contains my personal notes, insights, and lessons learned throughout my journey in software development. I share these articles in the hope they might be useful to others facing similar challenges.
+this blog contains my personal notes, insights, and lessons learned throughout my journey in software development. i share these articles in the hope they might be useful to others facing similar challenges.
 
-Feel free to open issues for questions or suggestions about any article.
+feel free to open issues for questions or suggestions about any article.
