@@ -3,7 +3,7 @@ title: "I love finite-state machines"
 date: 2025-05-10
 tags: [patterns, state-machine,-refactoring]
 category: tech
-draft: true
+draft: false
 ---
 
 Hi, my name is Anton. I'm a software developer specializing in cross-platform mobile development, currently working at a fintech company where I help build a neo-banking application.
