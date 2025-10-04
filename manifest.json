@@ -1,0 +1,27 @@
+[
+  {
+    "category": "tech",
+    "date": "2025-09-13",
+    "draft": false,
+    "slug": "closure-based-architecture",
+    "tags": [
+      "react",
+      "closure",
+      "component",
+      "architecture"
+    ],
+    "title": "React's Component Revolution: How Closures Became the Foundation of Modern UI Components"
+  },
+  {
+    "category": "tech",
+    "date": "2025-05-10",
+    "draft": false,
+    "slug": "i-love-state-machines",
+    "tags": [
+      "patterns",
+      "state-machine",
+      "refactoring"
+    ],
+    "title": "I love finite-state machines"
+  }
+]
