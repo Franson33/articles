@@ -1,8 +1,9 @@
-name: Generate Manifes
+name: Generate Manifest
 on: 
+  workflow_dispatch:
   push:
     paths:
-      - 'articles/**/*.md' # Only trigger if *.md files in articles/ change
+      - 'articles/*.md' # Only trigger if *.md files in articles/ change
     branches:
       - main
       
@@ -14,9 +15,9 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.17'
-          otp-version: '27'
-          
+          elixir-version: '1.18'
+          otp-version: '28'
+         
       - name: Generate manifest
         run: elixir scripts/generate_manifest.exs
 
