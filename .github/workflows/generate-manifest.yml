@@ -1,0 +1,29 @@
+name: Generate Manifes
+on: 
+  push:
+    paths:
+      - 'articles/**/*.md' # Only trigger if *.md files in articles/ change
+    branches:
+      - main
+      
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+          
+      - name: Generate manifest
+        run: elixir scripts/generate_manifest.exs
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git diff --staged --quiet || git commit -m "Updated manifest [skip ci]"
+          git push

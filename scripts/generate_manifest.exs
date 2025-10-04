@@ -16,6 +16,8 @@ defmodule ManifestGenerator do
       |> Jason.encode!(pretty: true)
 
     File.write!("manifest.json", manifest)
+
+    IO.puts("✓ Generated manifest.json with #{length(Jason.decode!(json))} articles")
   end
 
   defp list_markdown_files() do
