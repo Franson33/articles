@@ -6,8 +6,6 @@ category: tech
 draft: false
 ---
 
-# React's Component Revolution: How Closures Became the Foundation of Modern UI Components
-
 > _Note: In this article I intentionally use the jargon terms **"closure"** and **"variable."** The ECMAScript specification doesn’t formally define “closures”—it talks about **lexical environments** and **scope chains**—and what we usually call “variables” are technically **identifiers bound in environment records**. I’m sticking with the jargon here because it’s what the community uses and it makes the discussion more readable._
 
 Every React developer has written hundreds of closures. Many don't realize how central they've become.
