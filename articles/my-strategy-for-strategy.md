@@ -23,39 +23,70 @@ The first implementation was straightforward. We added it for logged-in users in
 ```ts
 // useRealtimeConnection.ts
 import { events } from "aws-amplify/data";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { configureAmplify } from "@/services/amplify";
 
 export const useRealtimeConnection = () => {
   const token = useAuthToken();
   const user = useCurrentUser();
-  const isPushEnabled = useNotificationPermission();
+
+  const [isInternet, setIsInternet] = useState(true);
+  const [isPushEnabled, setIsPushEnabled] = useState(true);
+  const [isInForeground, setIsInForeground] = useState(true);
 
   const subRef = useRef(null);
 
+  const syncPushPermission = () =>
+    getNotificationPermission().then(setIsPushEnabled);
+
   useEffect(() => {
-    if (isPushEnabled || !user.id) return;
+    syncPushPermission();
+  }, []);
+
+  useAppInForeground(
+    () => {
+      setIsInForeground(true);
+      syncPushPermission();
+    },
+    () => setIsInForeground(false),
+  );
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNetworkStatus(setIsInternet);
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (isPushEnabled || !user.id || !isInForeground || !isInternet || !token)
+      return;
+
+    configureAmplify();
 
     let channel;
 
-    const connect = async () => {
-      channel = await events.connect(`/user/${user.id}/notifications`, {
-        authToken: token,
-      });
+    const connectAndSubscribe = async () => {
+      try {
+        channel = await events.connect(`/user/${user.id}/notifications`, {
+          authToken: token,
+        });
 
-      subRef.current = channel.subscribe({
-        next: (data) => handleEvent(data.event),
-        error: (err) => console.error("[Realtime] Error:", err),
-      });
+        subRef.current = channel.subscribe({
+          next: (data) => onEvent(data.event),
+          error: (err) => console.error("[Realtime] Error:", err),
+        });
+      } catch (error) {
+        console.error("[Realtime] Connection failed");
+      }
     };
 
-    connect();
+    connectAndSubscribe();
 
     return () => {
       subRef.current?.unsubscribe();
       subRef.current = null;
       channel?.close();
     };
-  }, [isPushEnabled, token, user]);
+  }, [isPushEnabled, token, user, isInForeground, isInternet]);
 };
 ```
 
@@ -72,7 +103,7 @@ But here's the catch: the onboarding scope had different requirements:
 - **Different endpoint** - onboarding events come from a separate service
 - **Different events** - document verification status, compliance checks, not transactions
 - **Different handlers** - onboarding-specific logic for processing events
-- **Different authentication** - temporary session token instead of full auth token
+- **Different auth state** - onboarding users hold a temporary session rather than a full account, so the connection preconditions are completely different
 - **Different user identification** - session ID instead of user ID
 
 My first thought was: "Well, I'll just create another hook, `useOnboardingRealtimeConnection`, copy the logic, and adjust it." But as soon as I started thinking about it, alarm bells went off in my head. This would be a textbook case of code duplication. Sure, the details differ, but the structure is identical:
@@ -238,7 +269,7 @@ The `switch` on a typed navigation action (rather than string-matching a URL pat
 
 This function is called inside the hook via `useMemo`, so the strategy object only changes when the user navigates to a different scope.
 
-### 5. Refactoring the Hook
+### 5. Putting It All Together
 
 Finally, the hook. This is where everything comes together. The hook has **one responsibility**: managing the connection lifecycle. It collects all environmental state — token, user, push permission, foreground status, network connectivity — and hands it to the strategy. The strategy decides what to do with it:
 
@@ -302,6 +333,7 @@ export const useRealtimeConnection = () => {
 
     if (!shouldConnect || !token) return;
 
+    // Ensure Amplify is configured with the right credentials before connecting
     configureAmplify();
 
     let channel;
@@ -343,7 +375,7 @@ export const useRealtimeConnection = () => {
 };
 ```
 
-The hook knows nothing about dashboards or onboarding. It collects context, hands it to the strategy, and the strategy decides everything else. The `scope` string is the only coupling between the two — used for logging and for routing incoming events to the right handler via `useNotificationHandler`.
+`useNotificationHandler` is a small hook that accepts a scope string and returns the matching event handler function — a switch on `"main"` vs `"onboarding"` that maps to the right domain logic. The hook knows nothing about dashboards or onboarding itself. It collects context, hands it to the strategy, and the strategy decides everything else. The `scope` string is the only coupling between the two.
 
 ---
 
@@ -351,7 +383,7 @@ The hook knows nothing about dashboards or onboarding. It collects context, hand
 
 I was very satisfied with the result. Now we have:
 
-**Before**: Two separate hooks with duplicated logic, or a single hook with messy conditional logic scattered throughout.
+**Before**: A single hook handling one scope — and no clear path to extend it without either duplicating the whole thing or tangling it with conditionals.
 
 **After**: A clean, extensible system where:
 
@@ -359,7 +391,7 @@ I was very satisfied with the result. Now we have:
 - Different configurations are encapsulated in separate strategies
 - Adding a new connection type means creating a new strategy, not modifying existing code
 - Each strategy is easy to test in isolation
-- The hook itself is simpler and more focused
+- The hook stays focused on lifecycle management, regardless of how many strategies exist
 
 The best part? When we later needed to add real-time connections for our customer support chat (yes, another different endpoint, different events, different auth), it took me less than an hour. I just created a new `supportChatStrategy.ts`, added it to the selection logic, and everything worked perfectly.
 
