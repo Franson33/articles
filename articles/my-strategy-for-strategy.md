@@ -101,8 +101,8 @@ libs/
   realtime/
     strategies/
       types.ts
-      mainAppStrategy.ts
-      onboardingStrategy.ts
+      dashboard.ts
+      onboarding.ts
       selectStrategy.ts
       index.ts
     useRealtimeConnection.ts
@@ -116,201 +116,223 @@ I started by defining what a "strategy" means in our context. This is the contra
 
 ```ts
 // libs/realtime/strategies/types.ts
-export type ConnectionConfig = {
-  endpoint: string;
-  token: string;
-  userId?: string;
-  sessionId?: string;
-};
+import type { AppUser, AuthenticatedUser } from "@/types";
 
-export type EventHandlers = {
-  [eventName: string]: (data: any) => void;
+export type ConnectionParams = {
+  token: string | null;
+  user: AppUser | AuthenticatedUser;
+  isPushEnabled: boolean;
+  isInForeground: boolean;
+  isInternet: boolean;
 };
 
 export type RealtimeStrategy = {
-  // Determines if this strategy should be active
-  shouldConnect: () => boolean;
-
-  // Provides connection configuration
-  getConnectionConfig: () => ConnectionConfig;
-
-  // Provides event handlers for this strategy
-  getEventHandlers: () => EventHandlers;
-
-  // Optional: strategy-specific cleanup
-  onDisconnect?: () => void;
+  scope: "main" | "onboarding";
+  shouldConnect: (params: ConnectionParams) => boolean;
+  getEndpoint: (user: AppUser | AuthenticatedUser) => string;
+  getIdentifier: (user: AppUser | AuthenticatedUser) => string | number;
 };
 ```
 
-This type defines everything a strategy needs to provide: when to connect, how to connect, what events to handle, and how to clean up.
+A few things worth noting here. First, `shouldConnect` takes an explicit `ConnectionParams` object rather than capturing values through closures — this makes strategies **pure, stateless objects** that are trivially unit-testable. Second, there is no `getEventHandlers` on the strategy. Instead, strategies carry a `scope` discriminator, and the hook uses it to route incoming events to the right handler separately. This keeps strategies focused purely on _connection concerns_.
 
 ### 3. Creating the Concrete Strategies
 
-With the type defined, I could now implement the two concrete strategies. First, the main app strategy:
+With the type defined, I could implement the two concrete strategies. Because strategies are **plain objects — not hooks, not factory functions** — they require zero framework magic:
 
 ```ts
-// libs/realtime/strategies/mainAppStrategy.ts
-import { useAuth } from "@/auth";
-import { usePushNotificationStatus } from "@/notifications";
-import { useAppStore } from "@/store";
+// libs/realtime/strategies/dashboard.ts
+import { isAuthenticated } from "@/guards";
 import type { RealtimeStrategy } from "./types";
 
-export const createMainAppStrategy = (): RealtimeStrategy => {
-  const { userId, authToken } = useAuth();
-  const isPushEnabled = usePushNotificationStatus();
-  const { handleTransaction, handleSecurityAlert, handleAccountUpdate } =
-    useAppStore();
-
-  return {
-    shouldConnect: () => {
-      return !isPushEnabled && !!userId;
-    },
-
-    getConnectionConfig: () => ({
-      endpoint: "wss://api.app.com/events",
-      token: authToken,
-      userId,
-    }),
-
-    getEventHandlers: () => ({
-      transaction: handleTransaction,
-      "security-alert": handleSecurityAlert,
-      "account-update": handleAccountUpdate,
-    }),
-  };
+export const dashboardStrategy: RealtimeStrategy = {
+  scope: "main",
+  shouldConnect: ({ token, user, isPushEnabled, isInForeground, isInternet }) =>
+    isAuthenticated(user) &&
+    token != null &&
+    !isPushEnabled &&
+    isInForeground &&
+    isInternet,
+  getEndpoint: (user) => {
+    if (!isAuthenticated(user)) throw new Error("User not authenticated");
+    return `/user/${user.id}/notifications`;
+  },
+  getIdentifier: (user) => {
+    if (!isAuthenticated(user)) throw new Error("User not authenticated");
+    return user.id;
+  },
 };
 ```
 
 And the onboarding strategy:
 
 ```ts
-// libs/realtime/strategies/onboardingStrategy.ts
-import { useOnboardingSession } from "@/onboarding";
-import { usePushNotificationStatus } from "@/notifications";
-import { useOnboardingStore } from "@/store";
+// libs/realtime/strategies/onboarding.ts
+import { isAuthenticated } from "@/guards";
 import type { RealtimeStrategy } from "./types";
 
-export const createOnboardingStrategy = (): RealtimeStrategy => {
-  const { sessionId, sessionToken, isActive } = useOnboardingSession();
-  const isPushEnabled = usePushNotificationStatus();
-  const {
-    handleDocumentVerification,
-    handleComplianceCheck,
-    handleIdentityStatus,
-  } = useOnboardingStore();
-
-  return {
-    shouldConnect: () => {
-      return !isPushEnabled && isActive && !!sessionId;
-    },
-
-    getConnectionConfig: () => ({
-      endpoint: "wss://api.app.com/onboarding-events",
-      token: sessionToken,
-      sessionId,
-    }),
-
-    getEventHandlers: () => ({
-      "document-verification": handleDocumentVerification,
-      "compliance-check": handleComplianceCheck,
-      "identity-status": handleIdentityStatus,
-    }),
-  };
+export const onboardingStrategy: RealtimeStrategy = {
+  scope: "onboarding",
+  shouldConnect: ({ token, user, isPushEnabled, isInForeground, isInternet }) =>
+    !isAuthenticated(user) &&
+    token != null &&
+    user.sessionId != null &&
+    !isPushEnabled &&
+    isInForeground &&
+    isInternet,
+  getEndpoint: (user) => {
+    if (!user.sessionId) throw new Error("Session not available");
+    return `/onboarding/${user.sessionId}/notifications`;
+  },
+  getIdentifier: (user) => user.sessionId ?? "unknown",
 };
 ```
 
-Notice how both strategies follow the same contract but provide completely different implementations. The main app strategy uses `userId` and `authToken`, while the onboarding strategy uses `sessionId` and `sessionToken`. They connect to different endpoints and handle different events. Yet, from the outside, they look identical.
+Notice how both strategies follow the same contract but provide completely different implementations. The `isAuthenticated` type guard is what makes them mutually exclusive: the dashboard strategy only activates for a fully signed-in user, while the onboarding strategy activates for an unauthenticated session. Neither strategy touches React at all — they are pure data objects you could test with a single `expect(dashboardStrategy.shouldConnect({...})).toBe(true)`.
+
+Also worth noting: `shouldConnect` receives not just auth/user data but also device-level signals like `isInForeground` and `isInternet`. In a mobile app these matter a lot — there's no point holding open a connection when the app is backgrounded or the device is offline, and the strategy is the right place to codify that decision.
 
 ### 4. Strategy Selection
 
-Next, I needed a way to choose which strategy to use based on the application state. This is where the context determines which algorithm to apply:
+Next, I needed a way to select which strategy to use based on the current navigation state. The key insight here is that this is a **pure function, not a hook**. It receives the current route as an argument and returns the matching strategy object — no side effects, no subscriptions, nothing:
 
 ```ts
 // libs/realtime/strategies/selectStrategy.ts
-import { useLocation } from "@/navigation";
-import { createMainAppStrategy } from "./mainAppStrategy";
-import { createOnboardingStrategy } from "./onboardingStrategy";
+import type { AppRoute } from "@/navigation";
+import { dashboardStrategy } from "./dashboard";
+import { onboardingStrategy } from "./onboarding";
 import type { RealtimeStrategy } from "./types";
 
-export const useRealtimeStrategy = (): RealtimeStrategy | null => {
-  const location = useLocation();
-
-  // Determine which strategy to use based on current app context
-  const isOnboarding = location.pathname.startsWith("/onboarding");
-
-  if (isOnboarding) {
-    return createOnboardingStrategy();
+export const selectRealtimeStrategy = (
+  route: AppRoute,
+): RealtimeStrategy | null => {
+  switch (route) {
+    case "Main":
+      return dashboardStrategy;
+    case "Onboarding":
+    case "ResumeOnboarding":
+      return onboardingStrategy;
+    default:
+      return null;
   }
-
-  // Check if user is authenticated for main app
-  const { userId } = useAuth();
-  if (userId) {
-    return createMainAppStrategy();
-  }
-
-  // No strategy applicable
-  return null;
 };
 ```
 
-This helper function encapsulates the decision logic. It checks the current route and authentication state to determine which strategy should be active. If we need to add a third strategy in the future—say, for a guest user experience—we just add another condition here.
+The `switch` on a typed navigation action (rather than string-matching a URL path) means TypeScript will warn us if we add a new route and forget to handle it here. Adding a third strategy later — say, for a guest browsing mode — means adding one `case` and a new strategy file. Nothing else changes.
+
+This function is called inside the hook via `useMemo`, so the strategy object only changes when the user navigates to a different scope.
 
 ### 5. Refactoring the Hook
 
-Finally, I refactored the original hook to work with the generic strategy instead of hardcoded values. This is where the magic happens—the hook no longer knows or cares about the specifics of different connection types:
+Finally, the hook. This is where everything comes together. The hook is now responsible for **one thing only**: managing the connection lifecycle. It collects all environmental state — auth token, user, push permission, foreground status, network connectivity — and hands it to the strategy. The strategy decides what to do with it:
 
 ```ts
 // libs/realtime/useRealtimeConnection.ts
-import { useEffect, useRef } from "react";
-import { amplify } from "@/services/amplify";
-import { useRealtimeStrategy } from "./strategies";
+import { events } from "aws-amplify/data";
+import { useEffect, useMemo, useRef, useState } from "react";
+import NetInfo from "@react-native-community/netinfo";
+import { configureAmplify } from "@/services/amplify";
+import { hasNotificationsPermission } from "@/lib/permissions";
+import { selectRealtimeStrategy } from "./strategies";
+import { useAppInForeground } from "./state";
+import { useNotificationHandler } from "./useNotificationHandler";
+import { appSelector, userSelector, navigationSelector } from "@/stores";
 
 export const useRealtimeConnection = () => {
-  const strategy = useRealtimeStrategy();
-  const connectionRef = useRef<Connection | null>(null);
+  const token = appSelector.use.token();
+  const user = userSelector.use.user();
+  const route = navigationSelector.use.currentRoute();
+
+  const [isInternet, setIsInternet] = useState(true);
+  const [isPushEnabled, setIsPushEnabled] = useState(true);
+  const [isInForeground, setIsInForeground] = useState(true);
+
+  // Pure function — returns a static strategy object, no hooks called inside
+  const strategy = useMemo(() => selectRealtimeStrategy(route), [route]);
+
+  // Scope-based handler routing: the hook knows *how* to connect, not *what* to do with events
+  const handler = useNotificationHandler(strategy?.scope ?? null);
+
+  const subRef = useRef(null);
+
+  const checkPushPermission = () =>
+    hasNotificationsPermission().then(setIsPushEnabled);
 
   useEffect(() => {
-    // No strategy means no connection needed
+    checkPushPermission();
+  }, []);
+
+  // Re-check push permission whenever the app comes back to the foreground
+  useAppInForeground(
+    () => {
+      setIsInForeground(true);
+      checkPushPermission();
+    },
+    () => setIsInForeground(false),
+  );
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(({ isConnected }) =>
+      setIsInternet(!!isConnected),
+    );
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     if (!strategy) return;
 
-    // Check if we should connect using the strategy
-    if (!strategy.shouldConnect()) {
-      // Disconnect if we have an active connection
-      if (connectionRef.current) {
-        connectionRef.current.disconnect();
-        connectionRef.current = null;
+    const shouldConnect = strategy.shouldConnect({
+      token,
+      user,
+      isPushEnabled,
+      isInForeground,
+      isInternet,
+    });
+
+    if (!shouldConnect || !token) return;
+
+    configureAmplify();
+
+    let channel;
+
+    const connectAndSubscribe = async () => {
+      try {
+        const endpoint = strategy.getEndpoint(user);
+        const identifier = strategy.getIdentifier(user);
+
+        console.log(`[Realtime] Connecting ${strategy.scope} – ${identifier}`);
+
+        channel = await events.connect(endpoint, { authToken: token });
+
+        subRef.current = channel.subscribe({
+          next: (data) => handler(data.event),
+          error: (err) => console.error("[Realtime] Error:", err),
+        });
+      } catch (error) {
+        console.error(`[Realtime] Connection failed for ${strategy.scope}`);
       }
-      return;
-    }
-
-    // Get configuration from the strategy
-    const config = strategy.getConnectionConfig();
-    const handlers = strategy.getEventHandlers();
-
-    // Establish connection
-    const connection = amplify.events.connect({
-      endpoint: config.endpoint,
-      token: config.token,
-    });
-
-    // Subscribe to events defined by the strategy
-    Object.entries(handlers).forEach(([eventName, handler]) => {
-      connection.on(eventName, handler);
-    });
-
-    connectionRef.current = connection;
-
-    // Cleanup
-    return () => {
-      connection.disconnect();
-      strategy.onDisconnect?.();
-      connectionRef.current = null;
     };
-  }, [strategy]);
+
+    connectAndSubscribe();
+
+    return () => {
+      subRef.current?.unsubscribe();
+      subRef.current = null;
+      channel?.close();
+    };
+  }, [
+    token,
+    user,
+    isPushEnabled,
+    isInForeground,
+    isInternet,
+    strategy,
+    handler,
+  ]);
 };
 ```
 
-Look at how clean this is! The hook doesn't know anything about main app vs. onboarding. It doesn't know about different endpoints, tokens, or event types. It just asks the strategy: "Should we connect? How should we connect? What events should we handle?" The strategy provides all the answers.
+The hook no longer knows anything about dashboards or onboarding. It collects context, hands it to the strategy, and the strategy decides everything else. The `scope` string is the only coupling left — and it's used exclusively for logging and for routing incoming events to the right handler via `useNotificationHandler`.
 
 ---
 
@@ -338,13 +360,13 @@ The best part? When we later needed to add real-time connections for our custome
 
 - **Strategy Pattern Still Shines**: Despite being a "classic" pattern, Strategy remains incredibly useful in modern React development for handling variations of the same algorithm.
 
-- **Adapt Patterns to Your Context**: You don't need to follow the textbook class-based implementation. In React, strategies can be simple factory functions that return configuration objects.
+- **Adapt Patterns to Your Context**: You don't need to follow the textbook class-based implementation. In React, strategies can be plain objects with typed method signatures — no classes, no factories, no hooks inside the strategy itself.
 
 - **Separation of Concerns**: The hook manages the connection lifecycle; strategies provide the configuration. Each has a single, clear responsibility.
 
 - **Easy to Extend**: Adding new strategies doesn't require modifying existing code—just create a new strategy and update the selection logic.
 
-- **Testability**: Each strategy can be tested independently, and the hook can be tested with mock strategies.
+- **Strategies Should Be Pure**: By receiving all inputs as parameters instead of closing over hook values, strategies stay framework-agnostic and trivially testable — a single function call with a mock object is all you need.
 
 - **Type Safety**: TypeScript ensures all strategies follow the same contract, catching errors at compile time.
 
