@@ -22,24 +22,40 @@ The first implementation was straightforward. We added it for logged-in users in
 
 ```ts
 // useRealtimeConnection.ts
+import { events } from "aws-amplify/data";
+import { useEffect, useRef } from "react";
+
 export const useRealtimeConnection = () => {
-  const { userId, authToken } = useAuth();
-  const isPushEnabled = usePushNotificationStatus();
+  const token = useAuthToken();
+  const user = useCurrentUser();
+  const isPushEnabled = useNotificationPermission();
+
+  const subRef = useRef(null);
 
   useEffect(() => {
-    // Only connect when pushes are disabled
-    if (isPushEnabled || !userId) return;
+    if (isPushEnabled || !user.id) return;
 
-    const connection = amplify.events.connect({
-      endpoint: "wss://api.app.com/events",
-      token: authToken,
-    });
+    let channel;
 
-    connection.on("transaction", handleTransaction);
-    connection.on("security-alert", handleSecurityAlert);
+    const connect = async () => {
+      channel = await events.connect(`/user/${user.id}/notifications`, {
+        authToken: token,
+      });
 
-    return () => connection.disconnect();
-  }, [isPushEnabled, userId, authToken]);
+      subRef.current = channel.subscribe({
+        next: (data) => handleEvent(data.event),
+        error: (err) => console.error("[Realtime] Error:", err),
+      });
+    };
+
+    connect();
+
+    return () => {
+      subRef.current?.unsubscribe();
+      subRef.current = null;
+      channel?.close();
+    };
+  }, [isPushEnabled, token, user]);
 };
 ```
 
@@ -134,7 +150,7 @@ export type RealtimeStrategy = {
 };
 ```
 
-A few things worth noting here. First, `shouldConnect` takes an explicit `ConnectionParams` object rather than capturing values through closures — this makes strategies **pure, stateless objects** that are trivially unit-testable. Second, there is no `getEventHandlers` on the strategy. Instead, strategies carry a `scope` discriminator, and the hook uses it to route incoming events to the right handler separately. This keeps strategies focused purely on _connection concerns_.
+The `shouldConnect` method takes a `ConnectionParams` object — all the environmental signals the hook will collect and pass in. This keeps each strategy a pure, stateless object: no hidden state, no subscriptions, just a function that maps a snapshot of the world to a boolean. The `scope` field is a simple discriminator that lets the hook route incoming events to the right handler without the strategy needing to know anything about event processing itself.
 
 ### 3. Creating the Concrete Strategies
 
@@ -224,24 +240,21 @@ This function is called inside the hook via `useMemo`, so the strategy object on
 
 ### 5. Refactoring the Hook
 
-Finally, the hook. This is where everything comes together. The hook is now responsible for **one thing only**: managing the connection lifecycle. It collects all environmental state — auth token, user, push permission, foreground status, network connectivity — and hands it to the strategy. The strategy decides what to do with it:
+Finally, the hook. This is where everything comes together. The hook has **one responsibility**: managing the connection lifecycle. It collects all environmental state — token, user, push permission, foreground status, network connectivity — and hands it to the strategy. The strategy decides what to do with it:
 
 ```ts
 // libs/realtime/useRealtimeConnection.ts
 import { events } from "aws-amplify/data";
 import { useEffect, useMemo, useRef, useState } from "react";
-import NetInfo from "@react-native-community/netinfo";
 import { configureAmplify } from "@/services/amplify";
-import { hasNotificationsPermission } from "@/lib/permissions";
 import { selectRealtimeStrategy } from "./strategies";
 import { useAppInForeground } from "./state";
 import { useNotificationHandler } from "./useNotificationHandler";
-import { appSelector, userSelector, navigationSelector } from "@/stores";
 
 export const useRealtimeConnection = () => {
-  const token = appSelector.use.token();
-  const user = userSelector.use.user();
-  const route = navigationSelector.use.currentRoute();
+  const token = useAuthToken();
+  const user = useCurrentUser();
+  const route = useCurrentRoute();
 
   const [isInternet, setIsInternet] = useState(true);
   const [isPushEnabled, setIsPushEnabled] = useState(true);
@@ -255,26 +268,24 @@ export const useRealtimeConnection = () => {
 
   const subRef = useRef(null);
 
-  const checkPushPermission = () =>
-    hasNotificationsPermission().then(setIsPushEnabled);
+  const syncPushPermission = () =>
+    getNotificationPermission().then(setIsPushEnabled);
 
   useEffect(() => {
-    checkPushPermission();
+    syncPushPermission();
   }, []);
 
   // Re-check push permission whenever the app comes back to the foreground
   useAppInForeground(
     () => {
       setIsInForeground(true);
-      checkPushPermission();
+      syncPushPermission();
     },
     () => setIsInForeground(false),
   );
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener(({ isConnected }) =>
-      setIsInternet(!!isConnected),
-    );
+    const unsubscribe = subscribeToNetworkStatus(setIsInternet);
     return unsubscribe;
   }, []);
 
@@ -332,7 +343,7 @@ export const useRealtimeConnection = () => {
 };
 ```
 
-The hook no longer knows anything about dashboards or onboarding. It collects context, hands it to the strategy, and the strategy decides everything else. The `scope` string is the only coupling left — and it's used exclusively for logging and for routing incoming events to the right handler via `useNotificationHandler`.
+The hook knows nothing about dashboards or onboarding. It collects context, hands it to the strategy, and the strategy decides everything else. The `scope` string is the only coupling between the two — used for logging and for routing incoming events to the right handler via `useNotificationHandler`.
 
 ---
 
