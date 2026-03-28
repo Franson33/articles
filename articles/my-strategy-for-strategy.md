@@ -3,7 +3,7 @@ title: "My strategy for Strategy"
 date: 2025-11-20
 tags: [patterns, strategy, refactoring, react]
 category: tech
-draft: true
+draft: false
 ---
 
 Previously I already touched on the topic of design patterns. Today I want to continue this topic. Once more during my everyday work, I encountered a situation that perfectly illustrates the usage of one, and I think it's worth sharing.
@@ -236,7 +236,9 @@ export const useRealtimeConnection = () => {
       try {
         const endpoint = strategy.getEndpoint(user);
         const identifier = strategy.getIdentifier(user);
-        console.log(`[Realtime] Connecting to ${strategy.scope} – ${identifier}`);
+        console.log(
+          `[Realtime] Connecting to ${strategy.scope} – ${identifier}`,
+        );
 
         channel = await events.connect(endpoint, { authToken: token });
         subRef.current = channel.subscribe({
@@ -255,7 +257,15 @@ export const useRealtimeConnection = () => {
       subRef.current = null;
       channel?.close();
     };
-  }, [token, user, isPushEnabled, isInForeground, isInternet, strategy, handler]);
+  }, [
+    token,
+    user,
+    isPushEnabled,
+    isInForeground,
+    isInternet,
+    strategy,
+    handler,
+  ]);
 };
 ```
 
