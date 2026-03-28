@@ -1,6 +1,19 @@
 [
   {
     "category": "tech",
+    "date": "2025-11-20",
+    "draft": false,
+    "slug": "my-strategy-for-strategy",
+    "tags": [
+      "patterns",
+      "strategy",
+      "refactoring",
+      "react"
+    ],
+    "title": "My strategy for Strategy"
+  },
+  {
+    "category": "tech",
     "date": "2025-09-13",
     "draft": false,
     "slug": "closure-based-architecture",
