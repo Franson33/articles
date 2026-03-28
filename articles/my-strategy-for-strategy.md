@@ -234,9 +234,11 @@ export const useRealtimeConnection = () => {
 
     const connectAndSubscribe = async () => {
       try {
-        channel = await events.connect(strategy.getEndpoint(user), {
-          authToken: token,
-        });
+        const endpoint = strategy.getEndpoint(user);
+        const identifier = strategy.getIdentifier(user);
+        console.log(`[Realtime] Connecting to ${strategy.scope} – ${identifier}`);
+
+        channel = await events.connect(endpoint, { authToken: token });
         subRef.current = channel.subscribe({
           next: (data) => handler(data.event),
           error: (err) => console.error("[Realtime] Error:", err),
@@ -257,7 +259,7 @@ export const useRealtimeConnection = () => {
 };
 ```
 
-Compare this to the original hook from the Problem section: the structure is identical. The only difference is that the hardcoded endpoint, the inline guard condition, and `onDashboardEvent` have been replaced by `strategy`. The hook no longer knows anything about dashboards or registration — it just manages the connection.
+Compare this to the original hook from the Problem section: the structure is identical. The hardcoded endpoint and inline guard condition moved into the strategy; event handling is now routed separately based on the selected scope via `useNotificationHandler`. The hook no longer knows anything about dashboards or registration — it just manages the connection.
 
 ---
 
