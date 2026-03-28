@@ -8,7 +8,7 @@ draft: true
 
 Previously I already touched on the topic of design patterns. Today I want to continue this topic. Once more during my everyday work, I encountered a situation that perfectly illustrates the usage of one, and I think it's worth sharing.
 
-Need to admit, many design patterns are really outdated and almost unusable in modern client-side code, React specifically. But there are a few of them that are still shining and, from my point of view, are just irreplaceable! These champions are the Finite State Machine (which I covered in my [previous article](/articles/i-love-state-machines)) and the Strategy pattern. Let me tell you about a recent case where Strategy saved the day.
+Classic design patterns can feel awkward when transferred directly into modern React. Many of them were designed for stateful class hierarchies, and mapping them one-to-one to hooks and functional components often produces more ceremony than value. But some patterns remain genuinely useful — especially when adapted to fit the functional style rather than forced into their original shape. The Strategy pattern is one of them.
 
 ---
 
@@ -119,7 +119,7 @@ Creating a second hook felt like a poor solution and a pretty big code duplicati
 
 ## Pattern Recognition: Enter the Strategy
 
-The Strategy pattern is one of those classic patterns that remains incredibly useful in modern development. Here's the simple definition:
+The Strategy pattern is one of those classic patterns that remains useful in modern development. Here's the simple definition:
 
 > **Strategy Pattern**: Define a family of algorithms, encapsulate each one, and make them interchangeable. Strategy lets the algorithm vary independently from clients that use it.
 
@@ -127,13 +127,9 @@ In everyday terms, think of it like choosing a payment method at checkout. Wheth
 
 Another example: navigation apps. You can choose different routing strategies—fastest route, shortest route, avoid highways, avoid tolls. The app's interface stays the same, but the algorithm for calculating your route changes based on your chosen strategy.
 
-In our case:
+In our case, this looked like a good fit for a Strategy-style refactor. The lifecycle algorithm — connect, subscribe, clean up — stays fixed in the hook. What varies is the **policy**: when to connect, which endpoint to use, how to identify the user. Extracting that variation into separate strategy objects would let the hook remain stable while each scope provides its own rules.
 
-- **The algorithm family**: Different real-time connection configurations
-- **The interchangeable strategies**: Main app connection vs. onboarding connection
-- **The client**: Our hook that manages the connection lifecycle
-
-This was a perfect case for the Strategy pattern! But its classical form with classes didn't make much sense in the context of React's mostly functional style code. So what I implemented was actually my free-form interpretation of it, adapted to work naturally with React hooks and functional components.
+I'll come back to whether this is *really* Strategy in a moment. First, let me show the implementation.
 
 ---
 
@@ -185,7 +181,7 @@ The `shouldConnect` method takes a `ConnectionParams` object — all the environ
 
 ### 3. Creating the Concrete Strategies
 
-With the type defined, I could implement the two concrete strategies. Because strategies are **plain objects — not hooks, not factory functions** — they require zero framework magic:
+With the type defined, I could implement the two concrete strategies:
 
 ```ts
 // libs/realtime/strategies/dashboard.ts
@@ -211,8 +207,6 @@ export const dashboardStrategy: RealtimeStrategy = {
 };
 ```
 
-And the onboarding strategy:
-
 ```ts
 // libs/realtime/strategies/onboarding.ts
 import { isAuthenticated } from "@/guards";
@@ -235,7 +229,7 @@ export const onboardingStrategy: RealtimeStrategy = {
 };
 ```
 
-Notice how both strategies follow the same contract but provide completely different implementations. The `isAuthenticated` type guard is what makes them mutually exclusive: the dashboard strategy only activates for a fully signed-in user, while the onboarding strategy activates for an unauthenticated session. Neither strategy touches React at all — they are pure data objects you could test with a single `expect(dashboardStrategy.shouldConnect({...})).toBe(true)`.
+Both strategies follow the same contract but provide completely different implementations. The `isAuthenticated` type guard is what makes them mutually exclusive: the dashboard strategy only activates for a fully signed-in user, while the onboarding strategy activates for an unauthenticated session.
 
 Also worth noting: `shouldConnect` receives not just auth/user data but also device-level signals like `isInForeground` and `isInternet`. In a mobile app these matter a lot — there's no point holding open a connection when the app is backgrounded or the device is offline, and the strategy is the right place to codify that decision.
 
@@ -265,13 +259,13 @@ export const selectRealtimeStrategy = (
 };
 ```
 
-The `switch` on a typed navigation action (rather than string-matching a URL path) means TypeScript will warn us if we add a new route and forget to handle it here. Adding a third strategy later — say, for a guest browsing mode — means adding one `case` and a new strategy file. Nothing else changes.
+The `switch` on a typed navigation action (rather than string-matching a URL path) means TypeScript will warn us if we add a new route and forget to handle it here. Adding a third strategy later means adding one `case` and a new strategy file. Nothing else changes.
 
 This function is called inside the hook via `useMemo`, so the strategy object only changes when the user navigates to a different scope.
 
 ### 5. Putting It All Together
 
-Finally, the hook. This is where everything comes together. The hook has **one responsibility**: managing the connection lifecycle. It collects all environmental state — token, user, push permission, foreground status, network connectivity — and hands it to the strategy. The strategy decides what to do with it:
+Finally, the hook. The hook has **one responsibility**: managing the connection lifecycle. It collects all environmental state — token, user, push permission, foreground status, network connectivity — and hands it to the strategy. The strategy decides whether and how to connect:
 
 ```ts
 // libs/realtime/useRealtimeConnection.ts
@@ -291,10 +285,7 @@ export const useRealtimeConnection = () => {
   const [isPushEnabled, setIsPushEnabled] = useState(true);
   const [isInForeground, setIsInForeground] = useState(true);
 
-  // Pure function — returns a static strategy object, no hooks called inside
   const strategy = useMemo(() => selectRealtimeStrategy(route), [route]);
-
-  // Scope-based handler routing: the hook knows *how* to connect, not *what* to do with events
   const handler = useNotificationHandler(strategy?.scope ?? null);
 
   const subRef = useRef(null);
@@ -306,7 +297,6 @@ export const useRealtimeConnection = () => {
     syncPushPermission();
   }, []);
 
-  // Re-check push permission whenever the app comes back to the foreground
   useAppInForeground(
     () => {
       setIsInForeground(true);
@@ -333,7 +323,6 @@ export const useRealtimeConnection = () => {
 
     if (!shouldConnect || !token) return;
 
-    // Ensure Amplify is configured with the right credentials before connecting
     configureAmplify();
 
     let channel;
@@ -363,59 +352,67 @@ export const useRealtimeConnection = () => {
       subRef.current = null;
       channel?.close();
     };
-  }, [
-    token,
-    user,
-    isPushEnabled,
-    isInForeground,
-    isInternet,
-    strategy,
-    handler,
-  ]);
+  }, [token, user, isPushEnabled, isInForeground, isInternet, strategy, handler]);
 };
 ```
 
-`useNotificationHandler` is a small hook that accepts a scope string and returns the matching event handler function — a switch on `"main"` vs `"onboarding"` that maps to the right domain logic. The hook knows nothing about dashboards or onboarding itself. It collects context, hands it to the strategy, and the strategy decides everything else. The `scope` string is the only coupling between the two.
+`useNotificationHandler` is a small hook that accepts a scope string and returns the matching event handler function. The hook knows nothing about dashboards or onboarding itself — `scope` is the only coupling between the lifecycle and the domain logic.
+
+---
+
+## Is This Really Strategy?
+
+This is worth pausing on, because the honest answer is: **partially**.
+
+**Why it is more than just configuration:**
+The strategies contain real decision logic. `shouldConnect` is not a static flag — it evaluates auth state, network state, foreground state, and push permission status together to produce a boolean. `getEndpoint` and `getIdentifier` encapsulate behavior that differs meaningfully between scopes. If you replaced this with a plain config object, you'd need to move that logic somewhere else — the hook would have to know about authentication types and session IDs, exactly the coupling we were trying to avoid.
+
+**Why it is not full classical Strategy:**
+In the textbook GoF pattern, the strategy encapsulates the entire algorithm. Here, the hook still owns the lifecycle — connect, subscribe, clean up. The strategy only controls the *connection policy*: whether to connect, where, and who. Event handling is also routed externally via `scope` and `useNotificationHandler`, rather than being part of the strategy itself. A purist would call this a partial extraction.
+
+**The honest label:** this is a **Strategy/policy hybrid** — a pattern-inspired design that extracts variable policy from an invariant lifecycle, adapted to fit React's functional model rather than the class-based structure the original pattern assumed.
+
+That adaptation is intentional, not a shortcoming. Forcing a full class-based Strategy into a hooks-first codebase would add complexity without improving clarity. The goal was to isolate variation, not to satisfy a pattern checklist.
 
 ---
 
 ## The Result
 
-I was very satisfied with the result. Now we have:
-
 **Before**: A single hook handling one scope — and no clear path to extend it without either duplicating the whole thing or tangling it with conditionals.
 
 **After**: A clean, extensible system where:
 
-- The connection logic is centralized in one hook
-- Different configurations are encapsulated in separate strategies
+- The connection lifecycle is centralized in one hook
+- Different connection policies are encapsulated in separate strategies
 - Adding a new connection type means creating a new strategy, not modifying existing code
-- Each strategy is easy to test in isolation
+- Each strategy is easy to test in isolation — a single function call with a mock object is all you need
 - The hook stays focused on lifecycle management, regardless of how many strategies exist
 
 The best part? When we later needed to add real-time connections for our customer support chat (yes, another different endpoint, different events, different auth), it took me less than an hour. I just created a new `supportChatStrategy.ts`, added it to the selection logic, and everything worked perfectly.
+
+**The trade-off is real though:** this design introduces indirection. There's a selection layer, a type contract, and multiple files where one hook used to be. If you only ever have two cases and growth is unlikely, this abstraction might be more than the problem warrants. The question worth asking before reaching for this structure is: *is this variation expected to grow, or is it genuinely two fixed cases?* In our situation the answer was clear — but it won't always be.
 
 ---
 
 ## Key Takeaways
 
-- **Recognize Code Duplication Early**: When you find yourself about to copy-paste a hook or component with "just a few changes," pause and consider if there's a pattern that fits.
+- **Recognize Code Duplication Early**: When you find yourself about to copy-paste a hook with "just a few changes," pause and consider if there's a pattern that fits.
 
-- **Strategy Pattern Still Shines**: Despite being a "classic" pattern, Strategy remains incredibly useful in modern React development for handling variations of the same algorithm.
+- **Strategy Pattern Still Shines**: Despite being a "classic" pattern, Strategy remains useful in modern React development for handling variations of the same algorithm.
 
 - **Adapt Patterns to Your Context**: You don't need to follow the textbook class-based implementation. In React, strategies can be plain objects with typed method signatures — no classes, no factories, no hooks inside the strategy itself.
 
-- **Separation of Concerns**: The hook manages the connection lifecycle; strategies provide the configuration. Each has a single, clear responsibility.
+- **Separation of Concerns**: The hook manages the connection lifecycle; strategies encapsulate the variable connection policy. Each has a single, clear responsibility.
 
-- **Easy to Extend**: Adding new strategies doesn't require modifying existing code—just create a new strategy and update the selection logic.
+- **Easy to Extend**: Adding new strategies doesn't require modifying existing code — just create a new strategy and update the selection logic.
 
-- **Strategies Should Be Pure**: By receiving all inputs as parameters instead of closing over hook values, strategies stay framework-agnostic and trivially testable — a single function call with a mock object is all you need.
+- **Strategies Should Be Pure**: By receiving all inputs as parameters instead of closing over hook values, strategies stay framework-agnostic and trivially testable.
+
+- **Be Honest About What You've Built**: This isn't a full Strategy — it's a Strategy-style policy extraction. Knowing the difference helps you explain the design to teammates and decide when the same approach fits elsewhere.
 
 - **Type Safety**: TypeScript ensures all strategies follow the same contract, catching errors at compile time.
 
-- **Self-Documenting**: The code structure itself communicates the intent—when you see the `strategies` folder, you immediately understand that there are multiple approaches to the same problem.
-
-The Strategy pattern helped us avoid code duplication, made our codebase more maintainable, and set us up for easy extension in the future. When you spot a situation where you need to do the same thing in different ways depending on context, think Strategy—it might just be the perfect fit.
+The Strategy pattern — even in this adapted form — helped us avoid code duplication, made our codebase more maintainable, and set us up for easy extension in the future. When you spot a situation where you need to do the same thing in different ways depending on context, think Strategy. Just be honest with yourself about how much of the pattern you actually need.
 
 ---
 
